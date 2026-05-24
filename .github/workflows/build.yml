@@ -37,10 +37,10 @@ jobs:
       - name: Select Xcode 15
         run: sudo xcode-select --switch /Applications/Xcode_15.4.app || sudo xcode-select --switch /Applications/Xcode_15.0.app
 
-      - name: Compile Santander Workspace Natively
+      - name: Compile Santander Natively
         run: |
           mkdir -p build/Build/Products/Release-iphoneos
-          xcodebuild -workspace Santander.xcworkspace \
+          xcodebuild -project Santander.xcodeproj \
                      -scheme Santander \
                      -configuration Release \
                      -sdk iphoneos \
@@ -51,7 +51,7 @@ jobs:
 
       - name: Inject TrollStore Entitlements
         run: |
-          # Locate the freshly compiled raw .app folder
+          # Locate the freshly compiled raw .app folder dynamically
           APP_PATH=$(find build -name "Santander.app" -type d | head -n 1)
           echo "Found compiled application package at: $APP_PATH"
           
