@@ -24,7 +24,7 @@ jobs:
     runs-on: macos-14
 
     steps:
-      - name: Checkout
+      - name: Checkout Source Code
         uses: actions/checkout@v4
 
       - name: Set up Procursus (Provides ldid)
@@ -37,53 +37,24 @@ jobs:
       - name: Select Xcode 15
         run: sudo xcode-select --switch /Applications/Xcode_15.4.app || sudo xcode-select --switch /Applications/Xcode_15.0.app
 
-      - name: Compile Santander Natively
+      - name: Compile via Makefile
         run: |
-          mkdir -p build/Build/Products/Release-iphoneos
-          xcodebuild -project Santander.xcodeproj \
-                     -scheme Santander \
-                     -configuration Release \
-                     -sdk iphoneos \
-                     -derivedDataPath build \
-                     CODE_SIGNING_ALLOWED=NO \
-                     CODE_SIGNING_REQUIRED=NO \
-                     ONLY_ACTIVE_ARCH=NO
-
-      - name: Inject TrollStore Entitlements
-        run: |
-          # Locate the freshly compiled raw .app folder dynamically
-          APP_PATH=$(find build -name "Santander.app" -type d | head -n 1)
-          echo "Found compiled application package at: $APP_PATH"
+          # 1. Create a local temporary directory inside the safe workspace container
+          mkdir -p workspace_tmp
+          export TMPDIR="$(pwd)/workspace_tmp"
+          echo "Overriding Makefile TMPDIR path to: $TMPDIR"
           
-          # Inject root permissions directly into the main binary
-          if [ -f "entitlements-TS.plist" ]; then
-            ldid -Sentitlements-TS.plist "$APP_PATH/Santander"
-            echo "Successfully stamped entitlements-TS.plist!"
-          else
-            ldid -S "$APP_PATH/Santander"
-            echo "Warning: entitlements-TS.plist missing. Applied basic structural sign fallback."
-          fi
-
-      - name: Package Distribution Bundles
-        run: |
-          mkdir -p output/Payload
-          APP_PATH=$(find build -name "Santander.app" -type d | head -n 1)
-          
-          # Move application to a standardized deployment layout
-          cp -r "$APP_PATH" output/Payload/
-          
-          cd output
-          zip -vr SantanderJailed.ipa Payload/
-          cp SantanderJailed.ipa SantanderTrollStore.tipa
+          # 2. Fire the Makefile execution with explicitly injected environment paths
+          make TMPDIR="$TMPDIR"
 
       - name: Upload Standard Jailed IPA
         uses: actions/upload-artifact@v4
         with:
           name: SantanderJailed
-          path: output/SantanderJailed.ipa
+          path: build/SantanderJailed.ipa
 
       - name: Upload TrollStore Native TIPA
         uses: actions/upload-artifact@v4
         with:
           name: SantanderTrollStore
-          path: output/SantanderTrollStore.tipa
+          path: build/SantanderTrollStore.tipa
