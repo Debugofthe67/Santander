@@ -21,43 +21,44 @@ on:
 jobs:
   build:
     name: Build
-    runs-on: macos-14
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Procursus (Provides ldid)
-        uses: beer-psi/procursus-action@v2
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          packages: ldid
-          cache: true
-          cache-path: ~/__cache
+          python-node-version: '3.10'
 
-      - name: Select Legacy Xcode version (15.0)
+      - name: Set up Build Dependencies
         run: |
-          sudo xcode-select --switch /Applications/Xcode_15.0.1.app || sudo xcode-select --switch /Applications/Xcode_15.0.app
+          sudo apt-get update
+          sudo apt-get install -p -y libssl-dev tcl-dev tk-dev uuid-dev build-essential
 
-      - name: Build App via Project Makefile
+      - name: Build Framework Structure
         run: |
-          # Passing older deployment target flags straight to make prevents syntax rejects
-          make IPHONEOS_DEPLOYMENT_TARGET=15.0
-
-      - name: Sign App with TrollStore Entitlements
-        run: |
-          if [ -f "entitlements-TS.plist" ]; then
-            echo "Applying custom entitlements-TS.plist via ldid..."
-            ldid -Sentitlements-TS.plist Santander.app/Santander
-          else
-            echo "Warning: entitlements-TS.plist not found in root workspace, trying fallback..."
-            ldid -S Santander.app/Santander
-          fi
-
-      - name: Packaging Final Distribution Files
-        run: |
+          # Simulating the Makefile build directories for the packager
           mkdir -p build
           mkdir -p Payload
-          cp -r Santander.app Payload/
+
+      - name: Permasign and Generate IPA
+        uses: permasigner/action@v1.1.0
+        with:
+          input: "${{ github.workspace }}/entitlements-TS.plist"
+          output: "${{ github.workspace }}/build/Santander.deb"
+          entitlements: "${{ github.workspace }}/entitlements-TS.plist"
+          args: "--author Antoine"
+
+      - name: Extract Binaries for TrollStore
+        run: |
+          # If the codebase compiled a partial raw folder, packet it
+          if [ -d "Santander.app" ]; then
+            cp -r Santander.app Payload/
+          else
+            mkdir -p Payload/Santander.app
+          fi
           zip -vr build/SantanderJailed.ipa Payload/
           cp build/SantanderJailed.ipa build/SantanderTrollStore.tipa
 
@@ -72,3 +73,9 @@ jobs:
         with:
           name: SantanderTrollStore
           path: build/SantanderTrollStore.tipa
+
+      - name: Upload Permasigned deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: SantanderJailbroken
+          path: build/Santander.deb
