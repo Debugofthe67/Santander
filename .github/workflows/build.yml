@@ -21,7 +21,7 @@ on:
 jobs:
   build:
     name: Build
-    runs-on: macos-13
+    runs-on: macos-14
 
     steps:
       - name: Checkout
@@ -34,17 +34,17 @@ jobs:
           cache: true
           cache-path: ~/__cache
 
-      - name: Select Legacy Xcode version (14.3.1)
+      - name: Select Legacy Xcode version (15.0)
         run: |
-          sudo xcode-select --switch /Applications/Xcode_14.3.1.app
+          sudo xcode-select --switch /Applications/Xcode_15.0.1.app || sudo xcode-select --switch /Applications/Xcode_15.0.app
 
       - name: Build App via Project Makefile
         run: |
-          make
+          # Passing older deployment target flags straight to make prevents syntax rejects
+          make IPHONEOS_DEPLOYMENT_TARGET=15.0
 
       - name: Sign App with TrollStore Entitlements
         run: |
-          # Verify the entitlement file exists in workspace, sign the binary for unsandboxed execution
           if [ -f "entitlements-TS.plist" ]; then
             echo "Applying custom entitlements-TS.plist via ldid..."
             ldid -Sentitlements-TS.plist Santander.app/Santander
@@ -55,14 +55,9 @@ jobs:
 
       - name: Packaging Final Distribution Files
         run: |
-          # Create deployment layout structures
           mkdir -p build
           mkdir -p Payload
-          
-          # Move the signed app package into the zipped payload structure
           cp -r Santander.app Payload/
-          
-          # Compress payload directory into fully standardized IPAs
           zip -vr build/SantanderJailed.ipa Payload/
           cp build/SantanderJailed.ipa build/SantanderTrollStore.tipa
 
