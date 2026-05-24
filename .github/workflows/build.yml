@@ -37,10 +37,10 @@ jobs:
       - name: Select Xcode 15
         run: sudo xcode-select --switch /Applications/Xcode_15.4.app || sudo xcode-select --switch /Applications/Xcode_15.0.app
 
-      - name: Compile Santander Natively
+      - name: Compile Santander Workspace Natively
         run: |
           mkdir -p build/Build/Products/Release-iphoneos
-          xcodebuild -project Santander.xcodeproj \
+          xcodebuild -workspace Santander.xcworkspace \
                      -scheme Santander \
                      -configuration Release \
                      -sdk iphoneos \
