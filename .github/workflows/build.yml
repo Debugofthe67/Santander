@@ -21,61 +21,69 @@ on:
 jobs:
   build:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: macos-14
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Procursus (Provides ldid)
+        uses: beer-psi/procursus-action@v2
         with:
-          python-node-version: '3.10'
+          packages: ldid
+          cache: true
+          cache-path: ~/__cache
 
-      - name: Set up Build Dependencies
+      - name: Select Xcode 15
+        run: sudo xcode-select --switch /Applications/Xcode_15.4.app || sudo xcode-select --switch /Applications/Xcode_15.0.app
+
+      - name: Compile Santander Natively
         run: |
-          sudo apt-get update
-          sudo apt-get install -p -y libssl-dev tcl-dev tk-dev uuid-dev build-essential
+          mkdir -p build/Build/Products/Release-iphoneos
+          xcodebuild -project Santander.xcodeproj \
+                     -scheme Santander \
+                     -configuration Release \
+                     -sdk iphoneos \
+                     -derivedDataPath build \
+                     CODE_SIGNING_ALLOWED=NO \
+                     CODE_SIGNING_REQUIRED=NO \
+                     ONLY_ACTIVE_ARCH=NO
 
-      - name: Build Framework Structure
+      - name: Inject TrollStore Entitlements
         run: |
-          # Simulating the Makefile build directories for the packager
-          mkdir -p build
-          mkdir -p Payload
-
-      - name: Permasign and Generate IPA
-        uses: permasigner/action@v1.1.0
-        with:
-          input: "${{ github.workspace }}/entitlements-TS.plist"
-          output: "${{ github.workspace }}/build/Santander.deb"
-          entitlements: "${{ github.workspace }}/entitlements-TS.plist"
-          args: "--author Antoine"
-
-      - name: Extract Binaries for TrollStore
-        run: |
-          # If the codebase compiled a partial raw folder, packet it
-          if [ -d "Santander.app" ]; then
-            cp -r Santander.app Payload/
+          # Locate the freshly compiled raw .app folder
+          APP_PATH=$(find build -name "Santander.app" -type d | head -n 1)
+          echo "Found compiled application package at: $APP_PATH"
+          
+          # Inject root permissions directly into the main binary
+          if [ -f "entitlements-TS.plist" ]; then
+            ldid -Sentitlements-TS.plist "$APP_PATH/Santander"
+            echo "Successfully stamped entitlements-TS.plist!"
           else
-            mkdir -p Payload/Santander.app
+            ldid -S "$APP_PATH/Santander"
+            echo "Warning: entitlements-TS.plist missing. Applied basic structural sign fallback."
           fi
-          zip -vr build/SantanderJailed.ipa Payload/
-          cp build/SantanderJailed.ipa build/SantanderTrollStore.tipa
+
+      - name: Package Distribution Bundles
+        run: |
+          mkdir -p output/Payload
+          APP_PATH=$(find build -name "Santander.app" -type d | head -n 1)
+          
+          # Move application to a standardized deployment layout
+          cp -r "$APP_PATH" output/Payload/
+          
+          cd output
+          zip -vr SantanderJailed.ipa Payload/
+          cp SantanderJailed.ipa SantanderTrollStore.tipa
 
       - name: Upload Standard Jailed IPA
         uses: actions/upload-artifact@v4
         with:
           name: SantanderJailed
-          path: build/SantanderJailed.ipa
+          path: output/SantanderJailed.ipa
 
       - name: Upload TrollStore Native TIPA
         uses: actions/upload-artifact@v4
         with:
           name: SantanderTrollStore
-          path: build/SantanderTrollStore.tipa
-
-      - name: Upload Permasigned deb
-        uses: actions/upload-artifact@v4
-        with:
-          name: SantanderJailbroken
-          path: build/Santander.deb
+          path: output/SantanderTrollStore.tipa
