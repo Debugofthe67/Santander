@@ -21,46 +21,58 @@ on:
 jobs:
   build:
     name: Build
-    runs-on: macos-14
+    runs-on: macos-13
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Procursus
+      - name: Set up Procursus (Provides ldid)
         uses: beer-psi/procursus-action@v2
         with:
           packages: ldid
           cache: true
           cache-path: ~/__cache
 
-      - name: Select Xcode version (15.0)
+      - name: Select Legacy Xcode version (14.3.1)
         run: |
-          sudo xcode-select --switch /Applications/Xcode_15.0.app
+          sudo xcode-select --switch /Applications/Xcode_14.3.1.app
 
-      - name: Build App
+      - name: Build App via Project Makefile
         run: |
           make
 
-      - name: Package IPA Files
+      - name: Sign App with TrollStore Entitlements
         run: |
+          # Verify the entitlement file exists in workspace, sign the binary for unsandboxed execution
+          if [ -f "entitlements-TS.plist" ]; then
+            echo "Applying custom entitlements-TS.plist via ldid..."
+            ldid -Sentitlements-TS.plist Santander.app/Santander
+          else
+            echo "Warning: entitlements-TS.plist not found in root workspace, trying fallback..."
+            ldid -S Santander.app/Santander
+          fi
+
+      - name: Packaging Final Distribution Files
+        run: |
+          # Create deployment layout structures
           mkdir -p build
           mkdir -p Payload
+          
+          # Move the signed app package into the zipped payload structure
           cp -r Santander.app Payload/
           
-          # Build Jailed IPA
+          # Compress payload directory into fully standardized IPAs
           zip -vr build/SantanderJailed.ipa Payload/
-          
-          # Build TrollStore TIPA
           cp build/SantanderJailed.ipa build/SantanderTrollStore.tipa
 
-      - name: Upload IPA
+      - name: Upload Standard Jailed IPA
         uses: actions/upload-artifact@v4
         with:
           name: SantanderJailed
           path: build/SantanderJailed.ipa
 
-      - name: Upload IPA for TrollStore
+      - name: Upload TrollStore Native TIPA
         uses: actions/upload-artifact@v4
         with:
           name: SantanderTrollStore
